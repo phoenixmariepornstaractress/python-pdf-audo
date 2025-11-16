@@ -1,367 +1,290 @@
 import pyttsx3
 import PyPDF2
-import os
 from io import BytesIO
-from pydub import AudioSegment  # Requires pip install pydub
-from pydub.playback import play  # Requires simpleaudio
+from pydub import AudioSegment
+from pydub.playback import play
+from typing import List, Union, Optional
 
-def read_pdf_and_speak(pdf_path='book.pdf', output_filename='story.mp3', rate=150, volume=1.0, voice=None):
-    """
-    Reads text from a PDF file, prints it to the console, and saves it as an MP3 audio file.
-    """
-    try:
-        with open(pdf_path, 'rb') as pdf_file:
-            pdfreader = PyPDF2.PdfReader(pdf_file)
-            speaker = pyttsx3.init()
-            all_text = ""
-            speaker.setProperty('rate', rate)
-            speaker.setProperty('volume', volume)
-            if voice:
-                try:
-                    speaker.setProperty('voice', voice)
-                except ValueError:
-                    print(f"Warning: Voice ID '{voice}' not found. Using default voice.")
-            for page_num in range(len(pdfreader.pages)):
-                text = pdfreader.pages[page_num].extract_text()
-                clean_text = text.strip().replace('\n', ' ')
-                print(clean_text)
-                all_text += clean_text + " "
-            speaker.save_to_file(all_text, output_filename)
-            speaker.runAndWait()
-            speaker.stop()
-            print(f"\nSuccessfully saved the PDF content as '{output_filename}'")
-    except FileNotFoundError:
-        print(f"Error: The file '{pdf_path}' was not found. Please make sure the path is correct.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
 
-def get_available_voices():
-    """
-    Lists the available voices for text-to-speech.
-    """
-    speaker = pyttsx3.init()
-    voices = speaker.getProperty('voices')
-    print("Available voices:")
-    for i, voice in enumerate(voices):
-        print(f"[{i}] ID: {voice.id}")
-        print(f"    Name: {voice.name}")
-        print(f"    Languages: {voice.languages}")
-        print(f"    Gender: {voice.gender}")
-        print(f"    Age: {voice.age}")
-        print("-" * 20)
-    speaker.stop()
 
-def split_audio_by_page(pdf_path='book.pdf', output_prefix='page_', rate=150, volume=1.0, voice=None):
-    """
-    Reads each page of a PDF and saves the audio of each page as a separate MP3 file.
-    """
-    try:
-        with open(pdf_path, 'rb') as pdf_file:
-            pdfreader = PyPDF2.PdfReader(pdf_file)
-            speaker = pyttsx3.init()
-            speaker.setProperty('rate', rate)
-            speaker.setProperty('volume', volume)
-            if voice:
-                try:
-                    speaker.setProperty('voice', voice)
-                except ValueError:
-                    print(f"Warning: Voice ID '{voice}' not found. Using default voice.")
-            for page_num in range(len(pdfreader.pages)):
-                text = pdfreader.pages[page_num].extract_text()
-                clean_text = text.strip().replace('\n', ' ')
-                output_filename = f"{output_prefix}{page_num + 1}.mp3"
-                speaker.save_to_file(clean_text, output_filename)
-                print(f"Saved page {page_num + 1} as '{output_filename}'")
-            speaker.runAndWait()
-            speaker.stop()
-            print("\nSuccessfully saved audio for each page.")
-    except FileNotFoundError:
-        print(f"Error: The file '{pdf_path}' was not found. Please make sure the path is correct.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
+# ============================================================
+# TTS ENGINE INITIALIZATION
+# ============================================================
 
-def change_speech_rate(new_rate):
-    """
-    Changes the speaking rate for the text-to-speech engine.
-    """
-    speaker = pyttsx3.init()
-    speaker.setProperty('rate', new_rate)
-    print(f"Speech rate set to {new_rate} words per minute.")
-    speaker.stop()
+def init_engine(rate: int = 150, volume: float = 1.0, voice: Optional[str] = None):
+    """Initialize and configure the text-to-speech engine with validated settings."""
+    engine = pyttsx3.init()
 
-def change_speech_volume(new_volume):
-    """
-    Changes the speaking volume for the text-to-speech engine.
-    """
-    speaker = pyttsx3.init()
-    if 0.0 <= new_volume <= 1.0:
-        speaker.setProperty('volume', new_volume)
-        print(f"Speech volume set to {new_volume}.")
-    else:
-        print("Error: Volume must be between 0.0 and 1.0.")
-    speaker.stop()
+    # Validate & clamp
+    rate = max(60, min(rate, 450))
+    volume = max(0.0, min(volume, 1.0))
 
-def set_speech_voice(voice_id):
-    """
-    Sets a specific voice for the text-to-speech engine.
-    Use get_available_voices() to see the available voice IDs.
-    """
-    speaker = pyttsx3.init()
-    try:
-        speaker.setProperty('voice', voice_id)
-        print(f"Speech voice set to '{voice_id}'.")
-    except ValueError:
-        print(f"Error: Voice ID '{voice_id}' not found.")
-    speaker.stop()
+    engine.setProperty("rate", rate)
+    engine.setProperty("volume", volume)
 
-def read_specific_pages(pdf_path='book.pdf', pages_to_read=None, output_filename='selected_pages.mp3', rate=150, volume=1.0, voice=None):
-    """
-    Reads text from specific pages of a PDF file, prints it, and saves it as an MP3.
-    """
-    try:
-        with open(pdf_path, 'rb') as pdf_file:
-            pdfreader = PyPDF2.PdfReader(pdf_file)
-            speaker = pyttsx3.init()
-            selected_text = ""
-            speaker.setProperty('rate', rate)
-            speaker.setProperty('volume', volume)
-            if voice:
-                try:
-                    speaker.setProperty('voice', voice)
-                except ValueError:
-                    print(f"Warning: Voice ID '{voice}' not found. Using default voice.")
-            num_pages = len(pdfreader.pages)
-            pages_to_process = []
-            if pages_to_read is None:
-                pages_to_process = range(num_pages)
-            elif isinstance(pages_to_read, str):
-                page_ranges = pages_to_read.split(',')
-                for page_range in page_ranges:
-                    if '-' in page_range:
-                        start, end = map(int, page_range.split('-'))
-                        pages_to_process.extend(range(start - 1, end))
-                    else:
-                        pages_to_process.append(int(page_range) - 1)
-            elif isinstance(pages_to_read, list):
-                pages_to_process = [p - 1 for p in pages_to_read]
-            for page_num in sorted(list(set(pages_to_process))):
-                if 0 <= page_num < num_pages:
-                    text = pdfreader.pages[page_num].extract_text()
-                    clean_text = text.strip().replace('\n', ' ')
-                    print(f"Page {page_num + 1}: {clean_text[:100]}...")
-                    selected_text += clean_text + " "
-                else:
-                    print(f"Warning: Page number {page_num + 1} is out of range.")
-            if selected_text:
-                speaker.save_to_file(selected_text, output_filename)
-                speaker.runAndWait()
-                print(f"\nSuccessfully saved selected pages as '{output_filename}'")
-            else:
-                print("No text extracted from the specified pages.")
-            speaker.stop()
-    except FileNotFoundError:
-        print(f"Error: The file '{pdf_path}' was not found.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
-def read_pdf_from_memory(pdf_content, output_filename='memory_audio.mp3', rate=150, volume=1.0, voice=None):
-    """
-    Reads text from PDF content provided in memory (as bytes) and saves it as MP3.
-    """
-    try:
-        pdf_stream = BytesIO(pdf_content)
-        pdfreader = PyPDF2.PdfReader(pdf_stream)
-        speaker = pyttsx3.init()
-        all_text = ""
-        speaker.setProperty('rate', rate)
-        speaker.setProperty('volume', volume)
-        if voice:
-            try:
-                speaker.setProperty('voice', voice)
-            except ValueError:
-                print(f"Warning: Voice ID '{voice}' not found. Using default voice.")
-        for page_num in range(len(pdfreader.pages)):
-            text = pdfreader.pages[page_num].extract_text()
-            clean_text = text.strip().replace('\n', ' ')
-            print(f"Page {page_num + 1}: {clean_text[:100]}...")
-            all_text += clean_text + " "
-        speaker.save_to_file(all_text, output_filename)
-        speaker.runAndWait()
-        speaker.stop()
-        print(f"\nSuccessfully saved audio from memory as '{output_filename}'")
-    except Exception as e:
-        print(f"An error occurred while reading from memory: {e}")
-
-def get_speech_engine_info():
-    """
-    Prints information about the currently initialized speech engine.
-    """
-    speaker = pyttsx3.init()
-    engine_name = speaker.getProperty('engine')
-    print(f"Speech Engine: {engine_name}")
-    speaker.stop()
-
-def save_speech_to_file(text_to_speak, output_filename='custom_speech.mp3', rate=150, volume=1.0, voice=None):
-    """
-    Synthesizes the given text and saves it to an MP3 file without reading from a PDF.
-    """
-    speaker = pyttsx3.init()
-    speaker.setProperty('rate', rate)
-    speaker.setProperty('volume', volume)
     if voice:
         try:
-            speaker.setProperty('voice', voice)
-        except ValueError:
-            print(f"Warning: Voice ID '{voice}' not found. Using default voice.")
-    speaker.save_to_file(text_to_speak, output_filename)
-    speaker.runAndWait()
-    speaker.stop()
-    print(f"\nSuccessfully saved custom speech to '{output_filename}'")
+            engine.setProperty("voice", voice)
+        except Exception:
+            print(f"[!] Invalid voice '{voice}', using default.")
 
-def play_audio_file(audio_path):
+    return engine
+
+
+
+# ============================================================
+# PDF TEXT EXTRACTION
+# ============================================================
+
+def extract_text_from_pdf(pdf_source: Union[str, bytes]) -> List[str]:
     """
-    Plays the specified audio file. Requires the 'pydub' and 'simpleaudio' libraries.
+    Accepts either a file path or raw PDF bytes.
+    Returns: List of cleaned page text strings.
     """
+    try:
+        if isinstance(pdf_source, str):
+            with open(pdf_source, "rb") as f:
+                reader = PyPDF2.PdfReader(f)
+        else:
+            reader = PyPDF2.PdfReader(BytesIO(pdf_source))
+
+        pages = []
+        for page in reader.pages:
+            raw = page.extract_text() or ""
+            cleaned = " ".join(raw.split())
+            pages.append(cleaned)
+
+        if not pages:
+            print("[!] PDF contains no text.")
+        return pages
+
+    except FileNotFoundError:
+        print(f"[!] PDF not found: {pdf_source}")
+    except Exception as e:
+        print(f"[!] PDF extraction error: {e}")
+
+    return []
+
+
+
+# ============================================================
+# AUDIO GENERATION
+# ============================================================
+
+def save_audio(
+    text: str,
+    filename: str,
+    rate: int = 150,
+    volume: float = 1.0,
+    voice: Optional[str] = None
+) -> bool:
+    """Convert text → speech and save as an audio file."""
+    if not text.strip():
+        print("[!] Cannot generate audio from empty text.")
+        return False
+
+    try:
+        engine = init_engine(rate, volume, voice)
+        engine.save_to_file(text, filename)
+        engine.runAndWait()
+        engine.stop()
+        print(f"[✓] Audio saved: {filename}")
+        return True
+    except Exception as e:
+        print(f"[!] Failed to save audio: {e}")
+        return False
+
+
+
+# ============================================================
+# MAIN PDF → AUDIO
+# ============================================================
+
+def read_pdf_and_speak(
+    pdf_path: str = "book.pdf",
+    output_filename: str = "story.mp3",
+    rate: int = 150,
+    volume: float = 1.0,
+    voice: Optional[str] = None,
+):
+    pages = extract_text_from_pdf(pdf_path)
+    if not pages:
+        return
+
+    combined = " ".join(pages)
+    print(f"[i] Pages extracted: {len(pages)}")
+    print("[i] Sample:", combined[:200], "...")
+
+    save_audio(combined, output_filename, rate, volume, voice)
+
+
+
+def split_audio_by_page(
+    pdf_path: str = "book.pdf",
+    output_prefix: str = "page_",
+    rate: int = 150,
+    volume: float = 1.0,
+    voice: Optional[str] = None,
+):
+    pages = extract_text_from_pdf(pdf_path)
+    if not pages:
+        return
+
+    for i, page_text in enumerate(pages, start=1):
+        filename = f"{output_prefix}{i}.mp3"
+        save_audio(page_text, filename, rate, volume, voice)
+
+
+
+# ============================================================
+# PAGE SELECTION UTILITIES
+# ============================================================
+
+def parse_page_selection(selection: Union[str, List[int], None], total: int) -> List[int]:
+    """Parses page selections like '1-4,7' or [1, 3] into a validated list."""
+    if selection is None:
+        return list(range(1, total + 1))
+
+    if isinstance(selection, list):
+        return sorted({p for p in selection if 1 <= p <= total})
+
+    selected = []
+    try:
+        for token in selection.split(","):
+            token = token.strip()
+            if "-" in token:
+                start, end = map(int, token.split("-"))
+                for p in range(start, end + 1):
+                    if 1 <= p <= total:
+                        selected.append(p)
+            else:
+                p = int(token)
+                if 1 <= p <= total:
+                    selected.append(p)
+    except ValueError:
+        print("[!] Invalid page selection syntax.")
+        return []
+
+    return sorted(set(selected))
+
+
+
+def read_specific_pages(
+    pdf_path: str = "book.pdf",
+    pages_to_read: Union[str, List[int], None] = None,
+    output_filename: str = "selected.mp3",
+    rate: int = 150,
+    volume: float = 1.0,
+    voice: Optional[str] = None,
+):
+    pages = extract_text_from_pdf(pdf_path)
+    if not pages:
+        return
+
+    total = len(pages)
+    chosen = parse_page_selection(pages_to_read, total)
+
+    if not chosen:
+        print("[!] No valid pages selected.")
+        return
+
+    combined = " ".join(pages[p - 1] for p in chosen)
+    save_audio(combined, output_filename, rate, volume, voice)
+
+
+
+# ============================================================
+# MEMORY-BASED PDF READING
+# ============================================================
+
+def read_pdf_from_memory(
+    pdf_bytes: bytes,
+    output_filename: str = "memory_audio.mp3",
+    rate: int = 150,
+    volume: float = 1.0,
+    voice: Optional[str] = None,
+):
+    pages = extract_text_from_pdf(pdf_bytes)
+    if not pages:
+        return
+
+    combined = " ".join(pages)
+    save_audio(combined, output_filename, rate, volume, voice)
+
+
+
+# ============================================================
+# AUDIO PLAYBACK
+# ============================================================
+
+def play_audio_file(audio_path: str):
+    """Play an audio file using pydub."""
     try:
         audio = AudioSegment.from_file(audio_path)
         play(audio)
-        print(f"Playing audio file: '{audio_path}'")
+        print(f"[▶] Playing: {audio_path}")
     except FileNotFoundError:
-        print(f"Error: Audio file '{audio_path}' not found.")
+        print(f"[!] Audio not found: {audio_path}")
     except Exception as e:
-        print(f"An error occurred while playing audio: {e}")
+        print(f"[!] Playback error: {e}")
 
-def convert_pdf_to_text(pdf_path='book.pdf', output_text_file='output.txt'):
-    """
-    Extracts all text content from a PDF and saves it to a text file.
-    """
+
+
+# ============================================================
+# PDF UTILITIES
+# ============================================================
+
+def convert_pdf_to_text(pdf_path: str = "book.pdf", output_text_file: str = "output.txt"):
+    pages = extract_text_from_pdf(pdf_path)
+    if not pages:
+        return
+
     try:
-        with open(pdf_path, 'rb') as pdf_file:
-            pdfreader = PyPDF2.PdfReader(pdf_file)
-            all_text = ""
-            for page_num in range(len(pdfreader.pages)):
-                text = pdfreader.pages[page_num].extract_text()
-                all_text += text + "\n\n"
-        with open(output_text_file, 'w', encoding='utf-8') as text_file:
-            text_file.write(all_text)
-        print(f"Successfully extracted text to '{output_text_file}'")
-    except FileNotFoundError:
-        print(f"Error: The file '{pdf_path}' was not found.")
+        with open(output_text_file, "w", encoding="utf-8") as f:
+            f.write("\n\n".join(pages))
+        print(f"[✓] Extracted text saved to: {output_text_file}")
     except Exception as e:
-        print(f"An error occurred during text extraction: {e}")
+        print("[!] Could not save text:", e)
 
-def get_pdf_metadata(pdf_path='book.pdf'):
-    """
-    Retrieves and prints the metadata of the PDF file (author, title, etc.).
-    """
+
+
+def get_pdf_metadata(pdf_path: str = "book.pdf"):
     try:
-        with open(pdf_path, 'rb') as pdf_file:
-            pdfreader = PyPDF2.PdfReader(pdf_file)
-            metadata = pdfreader.metadata
-            if metadata:
-                print("PDF Metadata:")
-                for key, value in metadata.items():
-                    print(f"{key}: {value}")
-            else:
-                print("No metadata found for this PDF.")
+        with open(pdf_path, "rb") as f:
+            reader = PyPDF2.PdfReader(f)
+            meta = reader.metadata or {}
+
+        if not meta:
+            print("[i] PDF contains no metadata.")
+            return
+
+        print("\n--- PDF Metadata ---")
+        for key, value in meta.items():
+            print(f"{key}: {value}")
+
     except FileNotFoundError:
-        print(f"Error: The file '{pdf_path}' was not found.")
+        print(f"[!] File not found: {pdf_path}")
     except Exception as e:
-        print(f"An error occurred while reading metadata: {e}")
+        print("[!] Metadata error:", e)
 
-def adjust_speech_settings(rate=None, volume=None, voice_id=None):
-    """
-    Allows dynamic adjustment of speech rate, volume, and voice for the pyttsx3 engine.
-    """
-    speaker = pyttsx3.init()
-    if rate is not None:
-        speaker.setProperty('rate', rate)
-        print(f"Speech rate set to {rate} words per minute.")
-    if volume is not None:
-        if 0.0 <= volume <= 1.0:
-            speaker.setProperty('volume', volume)
-            print(f"Speech volume set to {volume}.")
-        else:
-            print("Error: Volume must be between 0.0 and 1.0.")
-    if voice_id is not None:
-        try:
-            speaker.setProperty('voice', voice_id)
-            print(f"Speech voice set to '{voice_id}'.")
-        except ValueError:
-            print(f"Error: Voice ID '{voice_id}' not found.")
-    speaker.stop()
 
-def stop_speaking():
-    """
-    Immediately stops any ongoing speech.
-    """
-    speaker = pyttsx3.init()
-    if speaker.isBusy():
-        speaker.stop()
-        print("Speech stopped.")
-    else:
-        print("No speech is currently in progress.")
 
-def pause_resume_speaking(action='toggle'):
-    """
-    Pauses or resumes the speech. Requires further implementation based on the backend.
-    Note: This functionality might not be universally supported by all pyttsx3 backends.
-    """
-    speaker = pyttsx3.init()
-    print("Pause/Resume functionality is backend-dependent and might not be fully implemented.")
-    speaker.stop() # Ensure the engine is not busy for future actions
+# ============================================================
+# VOICE INFORMATION
+# ============================================================
 
-def save_speech_to_wav(text_to_speak, output_filename='custom_speech.wav', rate=150, volume=1.0, voice=None):
-    """
-    Synthesizes the given text and saves it to a WAV audio file.
-    """
-    speaker = pyttsx3.init()
-    speaker.setProperty('rate', rate)
-    speaker.setProperty('volume', volume)
-    if voice:
-        try:
-            speaker.setProperty('voice', voice)
-        except ValueError:
-            print(f"Warning: Voice ID '{voice}' not found. Using default voice.")
-    speaker.save_to_file(text_to_speak, output_filename)
-    speaker.runAndWait()
-    speaker.stop()
-    print(f"\nSuccessfully saved custom speech to '{output_filename}' as WAV.")
+def get_available_voices():
+    engine = pyttsx3.init()
+    voices = engine.getProperty("voices")
 
-if __name__ == "__main__":
-    print("--- Reading and Speaking Entire PDF ---")
-    read_pdf_and_speak()
+    print("\n--- Available Voices ---")
+    for i, v in enumerate(voices):
+        print(f"[{i}] {v.name}  —  {v.id}")
 
-    print("\n--- Getting Available Voices ---")
-    get_available_voices()
+    engine.stop()
 
-    print("\n--- Splitting Audio by Page ---")
-    split_audio_by_page()
 
-    print("\n--- Changing Speech Rate ---")
-    change_speech_rate(170)
-    read_pdf_and_speak(rate=170, output_filename='story_faster.mp3')
-
-    print("\n--- Changing Speech Volume ---")
-    change_speech_volume(0.6)
-    read_pdf_and_speak(volume=0.6, output_filename='story_quieter.mp3')
-
-    print("\n--- Reading Specific Pages ---")
-    read_specific_pages(pages_to_read=[1, 3, 5], output_filename='selected_1_3_5.mp3')
-    read_specific_pages(pages_to_read='2-4', output_filename='selected_2_to_4.mp3')
-
-    print("\n--- Reading PDF from Memory ---")
-    try:
-        with open('book.pdf', 'rb') as f:
-            pdf_content = f.read()
-            read_pdf_from_memory(pdf_content, output_filename='from_memory.mp3')
-    except FileNotFoundError:
-        print("Error: 'book.pdf' not found for memory reading example.")
-
-    print("\n--- Getting Speech Engine Info ---")
-    get_speech_engine_info()
-
-    print("\n--- Saving Custom Speech ---")
-    save_speech_to_file("This is
-
-# Written by TiffinTech and Developed by phoenix marie.
+def get_speech_engine_info():
+    engine = pyttsx3.init()
+    print("Speech Engine:", engine.getProperty("engine"))
+    engine.stop()
